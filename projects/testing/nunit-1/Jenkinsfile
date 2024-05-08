@@ -1,0 +1,57 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_ACCESS_KEY_ID = credentials('xxxx-aws-access-key-id')
+        AWS_SECRET_ACCESS_KEY = credentials('xxxx-aws-secret-access-key')
+        AWS_REGION = 'eu-west-2'
+        ECS_CLUSTER = 'aws-ecs-cluster-name'
+        ECS_SERVICE = 'aws-ecs-service'
+        IMAGE_REPO_NAME = 'aws-ecr-repository-name'
+        IMAGE_TAG = 'latest'
+    }
+
+    stages {
+        stage('Build') {
+            steps {
+                // Checkout the source code from your repository
+                git 'https://github.com/ferrytest/practical-aspnetcore.git'
+                // Build the .NET application
+                dir('projects/testing/nunit-1/src/') {
+                    bat 'dotnet build'
+                }
+            }
+        }
+        stage('Test') {
+            steps {
+                dir('projects/testing/nunit-1/tests/') {
+                    bat 'dotnet test'
+                }
+            }
+        }
+        stage('Dockerize') {
+            steps {
+                script {
+                    docker.build("${IMAGE_REPO_NAME}:${IMAGE_TAG}", "-f Dockerfile .")
+                }
+            }
+        }
+        stage('Push to ECR') {
+            steps {
+                script {
+                    docker.withRegistry('https://xxxxxx-id.dkr.ecr.your-region.amazonaws.com', 'ecr:us-east-1:xxx-ecr-credentials') {
+                        docker.image("${IMAGE_REPO_NAME}:${IMAGE_TAG}").push()
+                    }
+                }
+            }
+        }
+        stage('Deploy to ECS') {
+            steps {
+                // Update ECS service with new task definition
+                script {
+                    sh 'ecs deploy ${ECS_CLUSTER} ${ECS_SERVICE} -i ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${IMAGE_REPO_NAME}:${IMAGE_TAG}'
+                }
+            }
+        }
+    }
+}
